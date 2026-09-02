@@ -1,0 +1,23 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>A.I. FOR DESIGNERS — Maria Haceaturian</title><style>
+:root{--bg:#090c18;--bg2:#17203a;--text:#f8f9ff;--muted:#c0c7e3;--card:rgba(255,255,255,.07);--border:rgba(255,255,255,.12);--cyan:#8ff7ff;--pink:#ff88dc}
+body.light{--bg:#f6f7fb;--bg2:#edf0ff;--text:#111827;--muted:#5a6477;--card:rgba(255,255,255,.75);--border:rgba(0,0,0,.08);--cyan:#4b7dff;--pink:#d147b4}
+*{box-sizing:border-box}body{margin:0;color:var(--text);font-family:Helvetica,Arial,sans-serif;min-height:100vh;overflow-x:hidden;background:radial-gradient(circle at 20% 20%,rgba(255,136,220,.15),transparent 30%),radial-gradient(circle at 80% 20%,rgba(143,247,255,.15),transparent 30%),linear-gradient(135deg,var(--bg),var(--bg2))}
+.bg{position:fixed;inset:0;pointer-events:none;overflow:hidden}
+.chrome-ball,.chrome-ball:before{position:absolute;border-radius:50%}
+.chrome-ball{background:radial-gradient(circle at 35% 28%,#fff 0 12%,#d9e8ff 13%,#95aee7 25%,#eef4ff 45%,#3f4f81 70%,#12182d 100%);box-shadow:0 0 50px rgba(255,255,255,.15)}
+.chrome-ball:before{content:'';inset:12%;background:radial-gradient(circle at 30% 30%,rgba(255,255,255,.95),rgba(255,255,255,0) 35%)}
+.b1{width:220px;height:220px;top:8%;right:8%}.b2{width:90px;height:90px;top:18%;right:25%}.b3{width:140px;height:140px;bottom:8%;left:6%}
+.ring{position:absolute;border-radius:50%;border:14px solid rgba(220,235,255,.65);filter:blur(.3px);box-shadow:0 0 40px rgba(180,220,255,.2)}
+.r1{width:520px;height:160px;top:5%;left:-120px;transform:rotate(12deg)}
+.r2{width:680px;height:180px;bottom:12%;right:-240px;transform:rotate(-14deg)}
+.spark{position:absolute;width:2px;height:110px;background:linear-gradient(transparent,#fff,transparent)}
+.spark:after{content:'';position:absolute;left:-54px;top:54px;width:110px;height:2px;background:linear-gradient(90deg,transparent,#fff,transparent)}
+.s1{top:15%;left:22%}.s2{top:24%;right:18%}.s3{bottom:20%;left:30%}
+.orn{position:absolute;color:var(--text);opacity:.07;font-size:220px}.o1{left:-20px;top:10px}.o2{right:0;bottom:0}
+.wrap{position:relative;z-index:2;width:min(92%,900px);margin:auto;padding:80px 0}.card{background:var(--card);backdrop-filter:blur(22px);border:1px solid var(--border);border-radius:36px;padding:40px}
+h1{font-size:clamp(2.2rem,6vw,5rem);margin:0;letter-spacing:-.04em}.cursive{font-family:Baskerville,Georgia,serif;font-style:italic;color:var(--pink)}
+.subtitle{color:var(--muted)}a{color:var(--cyan)}h2{margin-top:36px;text-transform:uppercase;letter-spacing:.15em;font-size:1rem}ol{list-style:none;padding:0}li{margin:10px 0}
+li a{text-decoration:none;color:var(--text);display:block;padding:16px 18px;border-radius:18px;background:rgba(255,255,255,.04);border:1px solid var(--border);transition:.25s}
+li a:hover{transform:translateY(-2px);box-shadow:0 0 30px rgba(143,247,255,.12)}
+.num{display:inline-block;width:42px;color:var(--cyan);font-weight:700}.theme{position:fixed;top:18px;right:18px;width:52px;height:52px;border-radius:50%;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer;z-index:5}
+</style></head><body><div class="bg"><div class="ring r1"></div><div class="ring r2"></div><div class="chrome-ball b1"></div><div class="chrome-ball b2"></div><div class="chrome-ball b3"></div><div class="spark s1"></div><div class="spark s2"></div><div class="spark s3"></div><div class="orn o1">✦</div><div class="orn o2">❈</div></div><button class="theme" id="t">◐</button><div class="wrap"><div class="card"><h1>A.I. FOR DESIGNERS <span class="cursive">— Maria Haceaturian</span></h1><p class="subtitle">ART 3041 · Fall 2026</p><p><a href="mailto:maria.haceaturian@baruchmail.cuny.edu">maria.haceaturian@baruchmail.cuny.edu</a></p><h2>Work</h2><ol><li><a href="#"><span class="num">01</span>Custom Instructions</a></li><li><a href="#"><span class="num">02</span>A Style Guide for Your AI</a></li><li><a href="#"><span class="num">03</span>Design a ___</a></li><li><a href="#"><span class="num">04</span>Commute Story</a></li><li><a href="#"><span class="num">05</span>Become a Crea(i)tive Director</a></li><li><a href="#"><span class="num">06</span>Experimental AI Interface</a></li><li><a href="#"><span class="num">07</span>Open</a></li></ol></div></div><script>const b=document.body;if(localStorage.theme==='light'||(!localStorage.theme&&matchMedia('(prefers-color-scheme:light)').matches))b.classList.add('light');t.onclick=()=>{b.classList.toggle('light');localStorage.theme=b.classList.contains('light')?'light':'dark'};</script></body></html>
