@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Poster Generator — Weingart Style</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght,wdth@400,700,900,75,100&family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#f5f5f7; --panel:#ffffff; --line:#e2e2e6; --text:#1d1d1f; --muted:#86868b;
+    --accent:#0071e3;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Inter",sans-serif;
+    background:var(--bg); color:var(--text); height:100vh; display:flex; flex-direction:column;
+  }
+  header{ padding:18px 28px; font-size:17px; font-weight:600; border-bottom:1px solid var(--line); background:var(--panel);}
+  .layout{ flex:1; display:flex; overflow:hidden; }
+
+  .sidebar{ width:190px; padding:22px 14px; border-right:1px solid var(--line); background:var(--panel); overflow-y:auto; }
+  .sidebar h3{ font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:0 0 10px 6px; font-weight:600;}
+  .filter-btn{
+    display:block; width:100%; text-align:left; padding:11px 14px; margin-bottom:8px;
+    border:none; border-radius:11px; background:var(--bg); color:var(--text);
+    font-size:14px; font-weight:500; cursor:pointer; transition:background .15s;
+  }
+  .filter-btn:hover{ background:#eceef0; }
+  .filter-btn.active{ background:var(--accent); color:#fff; }
+
+  .stage{ flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:24px; overflow:auto; }
+  .canvas-wrap{ background:var(--panel); border-radius:16px; padding:16px; box-shadow:0 1px 3px rgba(0,0,0,.06); }
+  canvas{ display:block; max-height:62vh; width:auto; border-radius:6px; background:#fff; }
+  .controls{ margin-top:18px; display:flex; align-items:center; gap:10px; }
+  .btn{
+    padding:12px 26px; border-radius:980px; border:none; font-size:14px; font-weight:600;
+    cursor:pointer; transition:opacity .15s;
+  }
+  .btn:hover{ opacity:.85; }
+  .btn-primary{ background:var(--accent); color:#fff; }
+  .btn-secondary{ background:var(--panel); color:var(--accent); border:1px solid var(--accent); }
+
+  .options{ width:260px; padding:22px 18px; border-left:1px solid var(--line); background:var(--panel); overflow-y:auto; }
+  .options h3{ font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:0 0 14px; font-weight:600;}
+  .options .empty{ color:var(--muted); font-size:13px; margin-top:40px; text-align:center; }
+
+  .swatch-row{ display:flex; align-items:center; gap:10px; margin-bottom:14px; }
+  .swatch{
+    width:30px; height:30px; border-radius:9px; cursor:pointer; border:2px solid transparent; flex-shrink:0;
+  }
+  .swatch.selected{ border-color:var(--accent); }
+  .swatch-name{ font-size:13px; flex:1; }
+  .slider{ width:100%; }
+  .swatch-slider{ width:100%; margin-top:4px; }
+
+  .type-option{ display:flex; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid var(--line); font-size:14px;}
+  .type-option input{ width:18px; height:18px; }
+
+  label.field-label{ font-size:13px; color:var(--muted); display:block; margin:14px 0 6px; }
+  input[type="range"]{ width:100%; }
+  input[type="text"]{
+    width:100%; padding:10px 12px; border-radius:10px; border:1px solid var(--line);
+    font-size:14px; font-family:inherit;
+  }
+  .toggle-row{ display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+  .switch{ position:relative; width:44px; height:26px; }
+  .switch input{ opacity:0; width:0; height:0; }
+  .slider-track{
+    position:absolute; cursor:pointer; inset:0; background:#d1d1d6; border-radius:999px; transition:.2s;
+  }
+  .slider-track:before{
+    content:""; position:absolute; width:22px; height:22px; left:2px; top:2px; background:#fff;
+    border-radius:50%; transition:.2s; box-shadow:0 1px 2px rgba(0,0,0,.2);
+  }
+  .switch input:checked + .slider-track{ background:var(--accent); }
+  .switch input:checked + .slider-track:before{ transform:translateX(18px); }
+  .value-badge{ font-size:12px; color:var(--muted); float:right; }
+</style>
+</head>
+<body>
+
+<header>Poster Generator — Das Schweizer Plakat style</header>
+
+<div class="layout">
+  <div class="sidebar">
+    <h3>Filter</h3>
+    <button class="filter-btn" data-filter="color">Color</button>
+    <button class="filter-btn" data-filter="type">Type</button>
+    <button class="filter-btn" data-filter="texture">Texture</button>
+    <button class="filter-btn" data-filter="border">Border</button>
+    <button class="filter-btn" data-filter="text">Text</button>
+  </div>
+
+  <div class="stage">
+    <div class="canvas-wrap">
+      <canvas id="art" width="900" height="1273"></canvas>
+    </div>
+    <div class="controls">
+      <button class="btn btn-primary" id="generateBtn">Generate</button>
+      <button class="btn btn-secondary" id="downloadBtn">Download PDF</button>
+    </div>
+  </div>
+
+  <div class="options" id="options">
+    <div class="empty">Select a filter to see its options.</div>
+  </div>
+</div>
+
+<script>
+const PALETTE = [
+  {key:'red',    name:'Red / Orange', hex:'#E5482E', base:true},
+  {key:'yellow', name:'Golden Yellow', hex:'#F2B705', base:true},
+  {key:'olive',  name:'Mustard / Olive', hex:'#9B8B1F'},
+  {key:'green',  name:'Green', hex:'#6E8B3D'},
+  {key:'blue',   name:'Blue', hex:'#3A6EA5'},
+  {key:'black',  name:'Black', hex:'#000000', base:true},
+  {key:'cream',  name:'Cream', hex:'#F3EAD8', base:true},
+];
+
+const state = {
+  colors: {},            // key -> {selected, lightness}
+  type: {archivo:true, inter:true},
+  dotSize: 4,
+  borderOn: true,
+  borderSize: 40,
+  text: 'Das Schweizer Plakat',
+};
+PALETTE.forEach(c => state.colors[c.key] = {selected: !!c.base, lightness: 0});
+
+function adjustLightness(hex, amt){
+  const n = parseInt(hex.slice(1),16);
+  let r=(n>>16)&255, g=(n>>8)&255, b=n&255;
+  r=Math.min(255,Math.max(0,r+amt*2.3));
+  g=Math.min(255,Math.max(0,g+amt*2.3));
+  b=Math.min(255,Math.max(0,b+amt*2.3));
+  return `rgb(${r|0},${g|0},${b|0})`;
+}
+function activeColors(){
+  return PALETTE.filter(c=>state.colors[c.key].selected)
+    .map(c=>adjustLightness(c.hex, state.colors[c.key].lightness));
+}
+
+/* ---------- Sidebar filter switching ---------- */
+const optionsEl = document.getElementById('options');
+document.querySelectorAll('.filter-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    renderOptions(btn.dataset.filter);
+  });
+});
+
+function renderOptions(filter){
+  if(filter==='color') return renderColorPanel();
+  if(filter==='type') return renderTypePanel();
+  if(filter==='texture') return renderTexturePanel();
+  if(filter==='border') return renderBorderPanel();
+  if(filter==='text') return renderTextPanel();
+}
+
+function renderColorPanel(){
+  optionsEl.innerHTML = '<h3>Color</h3>';
+  PALETTE.forEach(c=>{
+    const row = document.createElement('div'); row.className='swatch-row';
+    const sw = document.createElement('div'); sw.className='swatch'+(state.colors[c.key].selected?' selected':'');
+    sw.style.background = c.hex;
+    sw.onclick = ()=>{ state.colors[c.key].selected = !state.colors[c.key].selected; renderColorPanel(); };
+    const wrap = document.createElement('div'); wrap.style.flex='1';
+    const name = document.createElement('div'); name.className='swatch-name'; name.textContent=c.name;
+    const slider = document.createElement('input'); slider.type='range'; slider.min=-40; slider.max=40;
+    slider.value = state.colors[c.key].lightness; slider.className='swatch-slider';
+    slider.oninput = e=>{ state.colors[c.key].lightness = +e.target.value; };
+    wrap.appendChild(name); wrap.appendChild(slider);
+    row.appendChild(sw); row.appendChild(wrap);
+    optionsEl.appendChild(row);
+  });
+}
+
+function renderTypePanel(){
+  optionsEl.innerHTML = '<h3>Type</h3>';
+  [['archivo','Archivo (display)'],['inter','Inter (body)']].forEach(([key,label])=>{
+    const row = document.createElement('label'); row.className='type-option';
+    const cb = document.createElement('input'); cb.type='checkbox'; cb.checked = state.type[key];
+    cb.onchange = e=>{ state.type[key] = e.target.checked; };
+    row.appendChild(cb);
+    row.appendChild(document.createTextNode(label));
+    optionsEl.appendChild(row);
+  });
+}
+
+function renderTexturePanel(){
+  optionsEl.innerHTML = '<h3>Texture</h3><label class="field-label">Halftone dot size<span class="value-badge" id="dotVal"></span></label>';
+  const slider = document.createElement('input');
+  slider.type='range'; slider.min=1; slider.max=10; slider.value=state.dotSize;
+  slider.oninput = e=>{ state.dotSize = +e.target.value; document.getElementById('dotVal').textContent=state.dotSize; };
+  optionsEl.appendChild(slider);
+  document.getElementById('dotVal').textContent = state.dotSize;
+}
+
+function renderBorderPanel(){
+  optionsEl.innerHTML = '<h3>Border</h3>';
+  const toggleRow = document.createElement('div'); toggleRow.className='toggle-row';
+  toggleRow.innerHTML = `<span>Show border</span>`;
+  const sw = document.createElement('label'); sw.className='switch';
+  const cb = document.createElement('input'); cb.type='checkbox'; cb.checked=state.borderOn;
+  const track = document.createElement('span'); track.className='slider-track';
+  cb.onchange = e=>{ state.borderOn = e.target.checked; sizeRow.style.display = state.borderOn?'block':'none'; };
+  sw.appendChild(cb); sw.appendChild(track); toggleRow.appendChild(sw);
+  optionsEl.appendChild(toggleRow);
+
+  const sizeRow = document.createElement('div');
+  sizeRow.innerHTML = `<label class="field-label">Border size<span class="value-badge" id="borderVal"></span></label>`;
+  const slider = document.createElement('input'); slider.type='range'; slider.min=10; slider.max=90; slider.value=state.borderSize;
+  slider.oninput = e=>{ state.borderSize = +e.target.value; document.getElementById('borderVal').textContent=state.borderSize+'px'; };
+  sizeRow.appendChild(slider);
+  sizeRow.style.display = state.borderOn?'block':'none';
+  optionsEl.appendChild(sizeRow);
+  document.getElementById('borderVal').textContent = state.borderSize+'px';
+}
+
+function renderTextPanel(){
+  optionsEl.innerHTML = '<h3>Text</h3><label class="field-label">Poster text</label>';
+  const input = document.createElement('input'); input.type='text'; input.value=state.text;
+  input.oninput = e=>{ state.text = e.target.value; };
+  optionsEl.appendChild(input);
+}
+
+/* ---------- Art generation ---------- */
+const canvas = document.getElementById('art');
+const ctx = canvas.getContext('2d');
+
+let seed = Math.random()*1000;
+function rand(n){ let x = Math.sin(n*12.9898 + seed*78.233)*43758.5453; return x-Math.floor(x); }
+
+function drawArt(){
+  seed = Math.random()*1000;
+  const W = canvas.width, H = canvas.height;
+  const cols = activeColors();
+  const warm = cols[0] || '#E5482E';
+  const sec  = cols[1] || '#F2B705';
+  const cream = state.colors.cream.selected ? adjustLightness('#F3EAD8', state.colors.cream.lightness) : '#F3EAD8';
+  const black = state.colors.black.selected ? adjustLightness('#000000', state.colors.black.lightness) : '#000000';
+  const b = state.borderOn ? state.borderSize : 0;
+
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle = cream; ctx.fillRect(0,0,W,H);
+
+  const ix=b, iy=b, iw=W-2*b, ih=H-2*b;
+
+  // illustration gradient background
+  const grad = ctx.createLinearGradient(0,iy,0,iy+ih);
+  grad.addColorStop(0, warm);
+  grad.addColorStop(.55, sec);
+  grad.addColorStop(1, cols[2] || '#9B8B1F');
+  ctx.fillStyle = grad;
+  ctx.fillRect(ix,iy,iw,ih*0.8);
+
+  // halftone dots
+  const dot = state.dotSize;
+  for(let y=iy; y<iy+ih*0.8; y+=dot*2.2){
+    for(let x=ix; x<ix+iw; x+=dot*2.2){
+      const n = rand(x*0.013+y*0.027);
+      ctx.globalAlpha = 0.25 + n*0.5;
+      ctx.fillStyle = cols[Math.floor(n*cols.length)] || warm;
+      ctx.beginPath();
+      ctx.arc(x+ (rand(x+y)-.5)*dot, y+(rand(y-x)-.5)*dot, dot*(0.4+n*0.6), 0, Math.PI*2);
+      ctx.fill();
+    }
+  }
+  ctx.globalAlpha = 1;
+
+  // mountain silhouette — random number of peaks, heights and positions each time
+  const peakCount = 3 + Math.floor(rand(1)*3); // 3-5 peaks
+  const baseY = iy+ih*(0.4+rand(2)*0.12);
+  ctx.fillStyle = 'rgba(0,0,0,0.18)';
+  ctx.beginPath();
+  ctx.moveTo(ix+iw*0.1, baseY);
+  for(let p=0; p<=peakCount; p++){
+    const px = ix+iw*(0.1 + (0.8/peakCount)*p + (rand(10+p)-.5)*0.05);
+    const py = baseY - ih*(0.1+rand(20+p)*0.35);
+    ctx.lineTo(px, py);
+  }
+  ctx.lineTo(ix+iw*0.9, baseY);
+  ctx.lineTo(ix+iw*0.1, baseY);
+  ctx.closePath(); ctx.fill();
+
+  // clouds — soft blob clusters, randomized count/size/position
+  const cloudCount = 3 + Math.floor(rand(30)*3);
+  for(let c=0;c<cloudCount;c++){
+    const ccx = ix+iw*rand(40+c*3);
+    const ccy = iy+ih*(0.3+rand(41+c*3)*0.45);
+    const cr = iw*(0.05+rand(42+c*3)*0.09);
+    ctx.fillStyle = `rgba(243,234,216,${0.35+rand(43+c)*0.35})`;
+    for(let k=0;k<4;k++){
+      ctx.beginPath();
+      ctx.arc(ccx+(rand(44+c*5+k)-.5)*cr*1.6, ccy+(rand(45+c*5+k)-.5)*cr*0.8, cr*(0.5+rand(46+c*5+k)*0.6), 0, Math.PI*2);
+      ctx.fill();
+    }
+  }
+
+  // sun / planet — placed anywhere in the illustration each generation
+  const sunX = ix+iw*(0.08+rand(60)*0.84);
+  const sunY = iy+ih*(0.08+rand(61)*0.55);
+  const sunR = iw*(0.055+rand(62)*0.06);
+  ctx.beginPath();
+  ctx.arc(sunX, sunY, sunR, 0, Math.PI*2);
+  ctx.strokeStyle = sec; ctx.lineWidth = iw*0.012; ctx.stroke();
+  ctx.fillStyle = cols[2] || '#9B8B1F'; ctx.fill();
+
+  // crescent moon — placed near the sun, offset randomly
+  const moonX = sunX - sunR*(1.6+rand(63)*1.2);
+  const moonY = sunY + sunR*(rand(64)-.5)*1.5;
+  ctx.fillStyle = cols[3] || '#6E8B3D';
+  ctx.beginPath(); ctx.arc(moonX, moonY, sunR*0.4, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = cream;
+  ctx.beginPath(); ctx.arc(moonX+sunR*0.1, moonY-sunR*0.05, sunR*0.34, 0, Math.PI*2); ctx.fill();
+
+  // small cross
+  ctx.fillStyle = warm;
+  const cx=ix+iw*(0.15+rand(70)*0.75), cy=iy+ih*(0.15+rand(71)*0.5), cs=iw*0.03;
+  ctx.fillRect(cx-cs/4, cy-cs, cs/2, cs*2);
+  ctx.fillRect(cx-cs, cy-cs/4, cs*2, cs/2);
+
+  // scattered black marks
+  for(let i=0;i<22;i++){
+    const n = rand(i*3.7);
+    const mx = ix+iw*rand(i*1.3), my = iy+ih*0.75*rand(i*2.1);
+    ctx.strokeStyle = black; ctx.lineWidth=1.5;
+    ctx.beginPath();
+    if(n>0.66){
+      ctx.moveTo(mx,my); ctx.lineTo(mx+8*(n-.5)*14, my-10); ctx.lineTo(mx+6, my+6); ctx.closePath(); ctx.stroke();
+    } else {
+      ctx.moveTo(mx,my); ctx.lineTo(mx+(n-.5)*40, my+(n-.3)*18); ctx.stroke();
+    }
+  }
+
+  // torn corner (top-left)
+  if(b>0){
+    ctx.fillStyle = cream;
+    ctx.beginPath();
+    ctx.moveTo(ix, iy);
+    ctx.lineTo(ix+iw*0.22, iy);
+    ctx.lineTo(ix+iw*0.14, iy+ih*0.05);
+    ctx.lineTo(ix+iw*0.2, iy+ih*0.08);
+    ctx.lineTo(ix+iw*0.05, iy+ih*0.16);
+    ctx.lineTo(ix, iy+ih*0.1);
+    ctx.closePath(); ctx.fill();
+  }
+
+  // right bleed checkerboard stripe
+  if(b>0){
+    const stripeW = b*0.8, sq = b*0.3;
+    for(let y=0; y<H; y+=sq){
+      ctx.fillStyle = (Math.floor(y/sq)%2===0) ? warm : '#ffffff';
+      ctx.fillRect(W-stripeW, y, stripeW, sq);
+    }
+  }
+
+  drawText(ix, iy, iw, ih, cream, black);
+}
+
+function drawText(ix, iy, iw, ih, cream, black){
+  const textY = iy + ih*0.86;
+  const archivo = state.type.archivo, inter = state.type.inter;
+  const fontFamily = archivo ? '"Archivo"' : (inter ? '"Inter"' : 'sans-serif');
+  const words = state.text.trim().split(/\s+/);
+  const sizeH1 = iw*0.11;
+
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = black;
+  ctx.font = `800 ${sizeH1}px ${fontFamily}`;
+
+  let lines;
+  if(words.length <= 1){ lines = [words[0]||'Art']; }
+  else if(words.length === 2){ lines = [words[0], words[1]]; }
+  else { lines = [words.slice(0,-1).join(' '), words[words.length-1]]; }
+
+  let ly = textY;
+  const lh = sizeH1*0.95;
+  lines.forEach((line,i)=>{
+    const lx = i===lines.length-1 && lines.length>1 ? ix+iw*0.5 : ix+iw*0.04;
+    ctx.fillText(line, lx, ly);
+    // knockout shapes cut into letters
+    const metrics = ctx.measureText(line);
+    for(let k=0;k<3;k++){
+      const px = lx + metrics.width*rand(i*7+k*2.3);
+      const py = ly - sizeH1*0.35*rand(i*3+k);
+      ctx.fillStyle = cream;
+      const shape = Math.floor(rand(i+k*9)*3);
+      if(shape===0){ ctx.beginPath(); ctx.arc(px,py,sizeH1*0.045,0,Math.PI*2); ctx.fill(); }
+      else if(shape===1){ ctx.fillRect(px,py-sizeH1*0.03,sizeH1*0.07,sizeH1*0.06); }
+      else { ctx.fillRect(px-sizeH1*0.015,py-sizeH1*0.04,sizeH1*0.03,sizeH1*0.08); ctx.fillRect(px-sizeH1*0.04,py-sizeH1*0.015,sizeH1*0.08,sizeH1*0.03); }
+      ctx.fillStyle = black;
+    }
+    ly += lh;
+  });
+
+  // reduced-opacity caption
+  const capFamily = inter ? '"Inter"' : fontFamily;
+  ctx.font = `500 ${iw*0.018}px ${capFamily}`;
+  ctx.globalAlpha = 0.6;
+  ctx.textAlign = 'right';
+  ctx.fillText('Generated poster · Weingart style system', ix+iw*0.98, iy+ih*0.97);
+  ctx.textAlign = 'left';
+  ctx.globalAlpha = 1;
+}
+
+document.getElementById('generateBtn').addEventListener('click', drawArt);
+document.getElementById('downloadBtn').addEventListener('click', ()=>{
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'px',
+    format: [canvas.width, canvas.height],
+    hotfixes: ['px_scaling']
+  });
+  doc.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, canvas.width, canvas.height);
+  doc.save('poster.pdf');
+});
+
+document.querySelector('[data-filter="color"]').click();
+drawArt();
+</script>
+</body>
+</html>
