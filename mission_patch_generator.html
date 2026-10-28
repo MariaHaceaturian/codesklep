@@ -256,7 +256,7 @@ const state = {
   symbols:[],
   animate:{on:false, speed:1, twinkle:true, orbit:true, pulse:true},
   backdrop:'light', seed:7,
-  gen:{stars:true, layout:true, colors:false, type:false},
+  gen:{stars:true, layout:true, colors:true, type:true, texture:true, border:true},
 };
 ROLES.forEach(([k])=>{ state.roles[k] = {key:ROLE_DEFAULT[k], l:0}; });
 
@@ -313,6 +313,10 @@ function nMatrix(){
   const L = state.layout, s = L.nScale, cx = 730, cy = 528;
   return [s,0,0,s, s*(L.nX-cx)+cx, s*(L.nY-cy)+cy];
 }
+function fontBBox(bs){
+  const gB = glyphBox(state.bFont,'B',weightOf(state.bFont,state.bWeight)), fs = Math.min((BH*bs)/gB.h, (BW*1.2*bs)/gB.w);
+  return {w:gB.w*fs, h:gB.h*fs};
+}
 const Bpath = new Path2D(B_D), Npath = new Path2D(N_D), Apath = new Path2D(A_D);
 function isOccupied(x, y, pad){
   const L = state.layout, sketchB = state.bFont==='sketch', sketchN = state.nFont==='sketch';
@@ -324,8 +328,8 @@ function isOccupied(x, y, pad){
       if(oc.isPointInPath(Bpath,x,y,'evenodd')) return true;
       oc.lineWidth = 2*pad/bs; if(oc.isPointInStroke(Bpath,x,y)) return true;
     } else {
-      const x0=BX0+L.bX+dx, y0=BY0+L.bY+dy;
-      if(x>x0-pad && x<x0+BW*1.2*bs+pad && y>y0-pad && y<y0+BH*bs+pad) return true;
+      const x0=BX0+L.bX+dx, y0=BY0+L.bY+dy, bb = fontBBox(bs);
+      if(x>x0-pad && x<x0+bb.w+pad && y>y0+(BH*bs-bb.h)-pad && y<y0+BH*bs+pad) return true;
     }
   }
   // N and A
@@ -363,14 +367,25 @@ function starLimit(y){
   if(state.ringText.on && y>500) lim = Math.min(lim, 372);
   return lim;
 }
+const REF_FREE = 676;
+function freeFraction(){
+  let free = 0;
+  for(let gy=0; gy<50; gy++) for(let gx=0; gx<50; gx++){
+    const x = 30+gx*18.8, y = 30+gy*18.8;
+    if(Math.hypot(x-CX,y-CY) > starLimit(y)) continue;
+    if(!isOccupied(x,y,19)) free++;
+  }
+  return free;
+}
+window.__free = ()=>freeFraction();
 function genStars(){
   const L = state.layout;
   const emb = L.embroidery;
   const rnd = mulberry32(state.seed);
   const out = [];
-  const target = state.density;
+  const target = Math.round(state.density * freeFraction() / REF_FREE);
   let tries = 0;
-  while(out.length < target && tries < 30000){
+  while(out.length < target && tries < 60000){
     tries++;
     const x = 30 + rnd()*940, y = 30 + rnd()*940;
     const lim = starLimit(y);
@@ -627,20 +642,56 @@ const THEMES = [
   {b:'red',  shadow:'navy', n:'blue',   oval:'white', star:'yellow', stars:'white', bg:'black'},
   {b:'blue', shadow:'navy', n:'red',    oval:'cream', star:'yellow', stars:'cream', bg:'black'},
 ];
+function lumOf(key){
+  const n = parseInt(hexOf(key).slice(1),16), f = c=>{ c/=255; return c<=0.03928 ? c/12.92 : Math.pow((c+0.055)/1.055,2.4); };
+  return 0.2126*f((n>>16)&255)+0.7152*f((n>>8)&255)+0.0722*f(n&255);
+}
+const contrast = (a,b)=>{ const x=lumOf(a), y=lumOf(b); return (Math.max(x,y)+0.05)/(Math.min(x,y)+0.05); };
+function randomScheme(){
+  const pick = arr => arr[Math.floor(Math.random()*arr.length)];
+  const keys = PALETTE.map(p=>p.key);
+  const bg = pick(['black','black','black','navy','navy','blue','red','green','cream','white','yellow']);
+  const ok = (min, not=[]) => { const c = keys.filter(k=>k!==bg && !not.includes(k) && contrast(k,bg)>=min); return c.length ? pick(c) : (lumOf(bg)>0.4?'black':'white'); };
+  const b = ok(2.2);
+  const n = ok(2.2,[b]);
+  const oval = ok(3,[]);
+  const star = ok(3,[oval]);
+  const stars = ok(4);
+  const dark = lumOf(b) > 0.3;
+  return {roles:{bg:{key:bg,l:0}, b:{key:b,l:0}, n:{key:n,l:0}, oval:{key:oval,l:0}, star:{key:star,l:0}, stars:{key:stars,l:0},
+    shadow:{key:b, l: dark ? -38 : 30}}, bg};
+}
 function generate(){
   const g = state.gen, L = state.layout;
-  const r = (a,b)=>a+Math.random()*(b-a);
-  if(g.stars){ state.seed = Math.floor(Math.random()*1e9); state.density = Math.round(r(70,130)); }
-  if(g.layout){
-    L.bScale = +r(0.84,0.98).toFixed(2); L.bX = Math.round(r(20,50)); L.bY = Math.round(r(10,40));
-    L.ovalTilt = Math.round(r(-52,-32)); L.ovalA = Math.round(r(280,325)); L.ovalB = Math.round(r(50,72));
-    L.ovalX = Math.round(r(-14,14)); L.ovalY = Math.round(r(-14,14));
-    L.starScale = +r(0.9,1.25).toFixed(2); L.nX = Math.round(r(-10,14)); L.nY = Math.round(r(-12,12)); L.nScale = +r(0.94,1.08).toFixed(2); L.aX = Math.round(r(-12,12));
-    const sh = [[-16,14],[16,14],[-14,-12],[18,-10]][Math.floor(Math.random()*4)]; L.shDx=sh[0]; L.shDy=sh[1];
-    fitB();
+  const r = (a,b)=>a+Math.random()*(b-a), ri = (a,b)=>Math.round(r(a,b));
+  const pick = arr => arr[Math.floor(Math.random()*arr.length)];
+  if(g.stars){
+    state.seed = Math.floor(Math.random()*1e9); state.density = ri(60,150);
+    state.crossPct = ri(12,55); state.dotScale = ri(80,150);
   }
-  if(g.type){ const pick = ()=>LETTERS[Math.floor(Math.random()*LETTERS.length)].key; state.bFont = pick(); state.nFont = pick(); state.bWeight = null; state.nWeight = null; }
-  if(g.colors){ const th = THEMES[Math.floor(Math.random()*THEMES.length)]; Object.keys(th).forEach(k=>{ state.roles[k] = {key:th[k], l:0}; }); }
+  if(g.layout){
+    L.bScale = +r(0.7,1.05).toFixed(2); L.bX = ri(-30,90); L.bY = ri(-30,70);
+    L.ovalTilt = ri(-62,-18); L.ovalA = ri(240,360); L.ovalB = ri(42,86);
+    L.ovalX = ri(-50,50); L.ovalY = ri(-50,50);
+    L.starScale = +r(0.8,1.5).toFixed(2); L.starX = ri(-40,40); L.starY = ri(-40,40);
+    L.nX = ri(-40,40); L.nY = ri(-40,40); L.nScale = +r(0.85,1.2).toFixed(2); L.aX = ri(-40,30); L.aY = ri(-40,40);
+    const sh = pick([[-16,14],[16,14],[-14,-12],[18,-10],[-24,22],[0,20],[22,0]]); L.shDx=sh[0]; L.shDy=sh[1]; L.shadow = Math.random()>0.1;
+    clampLayout(L); fitB();
+  }
+  if(g.type){ const pk = ()=>LETTERS[Math.floor(Math.random()*LETTERS.length)].key; state.bFont = pk(); state.nFont = Math.random()<0.4 ? state.bFont : pk(); state.bWeight = null; state.nWeight = null; }
+  if(g.colors){
+    if(Math.random()<0.3){ const th = pick(THEMES); Object.keys(th).forEach(k=>{ state.roles[k] = {key:th[k], l:0}; }); }
+    else { const sc = randomScheme(); Object.keys(sc.roles).forEach(k=>{ state.roles[k] = sc.roles[k]; }); }
+    state.roles.border = {key: Math.random()<0.5 ? state.roles.oval.key : state.roles.n.key, l:0};
+  }
+  if(g.texture){
+    state.texture.type = pick(['none','none','none','dots','dots','screentone','screentone','lines']);
+    state.texture.size = ri(4,11);
+  }
+  if(g.border){
+    state.border.style = pick(['none','none','none','solid','solid','double','stitch','dots']);
+    state.border.width = ri(10,22);
+  }
   invalidate(); rerenderPanel();
 }
 
@@ -724,7 +775,7 @@ function pColor(){
     blk.appendChild(s); optionsEl.appendChild(blk);
   });
   optionsEl.appendChild(mk('label','field-label','Generate also changes'));
-  optionsEl.appendChild(checkRow('Colours', 'Swaps in one of five ready-made colour themes.', state.gen.colors, v=>{ state.gen.colors=v; }));
+  optionsEl.appendChild(checkRow('Colours', 'New background, letter, oval and star colours, with enough contrast to read.', state.gen.colors, v=>{ state.gen.colors=v; }));
 }
 function pLayout(){
   const L = state.layout;
@@ -792,6 +843,7 @@ function pTexture(){
     .forEach(([k,n])=>optionsEl.appendChild(radioRow('tex',n,'',state.texture.type===k,()=>{state.texture.type=k;invalidate();})));
   optionsEl.appendChild(sliderRow('Texture size',3,16,state.texture.size,v=>v,v=>{state.texture.size=v;}));
   optionsEl.appendChild(mk('div','hint','Applied over the B and the NASA letters as a printed-halftone feel. Flat colour is better for embroidery.'));
+  optionsEl.appendChild(checkRow('Generate also changes the texture','Picks a random texture and size.',state.gen.texture,v=>{state.gen.texture=v;}));
 }
 function pBorder(){
   optionsEl.innerHTML = '<h3>Border</h3>';
@@ -799,6 +851,7 @@ function pBorder(){
   [['none','None (black outline)'],['solid','Solid ring'],['double','Double ring'],['stitch','Stitched dashes'],['dots','Dots']]
     .forEach(([k,n])=>optionsEl.appendChild(radioRow('bd',n,'',state.border.style===k,()=>{state.border.style=k;invalidate();})));
   optionsEl.appendChild(sliderRow('Ring thickness',6,36,state.border.width,v=>v,v=>{state.border.width=v;}));
+  optionsEl.appendChild(checkRow('Generate also changes the border','Picks a random ring style and thickness.',state.gen.border,v=>{state.gen.border=v;}));
 }
 function pText(){
   const rt = state.ringText;
