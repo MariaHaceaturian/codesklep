@@ -46,6 +46,12 @@
   #patch.dark{ background:#242426; }
   #patch.checker{ background:#fff conic-gradient(#e6e6ea 25%, #fff 0 50%, #e6e6ea 0 75%, #fff 0) 0 0/24px 24px; }
   #patch svg{ display:block; width:100%; height:100%; }
+  .canvas-wrap{ position:relative; }
+  #patch{ touch-action:none; }
+  #dragTag{ position:absolute; left:0; top:0; transform:translate(-50%,-140%); pointer-events:none; background:var(--text); color:var(--panel); font-size:11px; font-weight:600; padding:4px 9px; border-radius:980px; white-space:nowrap; opacity:0; transition:opacity .12s; }
+  #dragTag.on{ opacity:.92; }
+  .drag-hint{ margin-top:10px; font-size:12px; color:var(--muted); text-align:center; }
+  #lockBtn.locked{ background:var(--accent); color:#fff; border-color:var(--accent); }
   .controls{ margin-top:14px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:center; }
   .btn{ padding:12px 22px; border-radius:980px; border:none; font-size:14px; font-weight:600; cursor:pointer; transition:opacity .15s; }
   .btn:hover{ opacity:.85; }
@@ -81,6 +87,7 @@
   .switch input:checked + .slider-track{ background:var(--accent); }
   .switch input:checked + .slider-track:before{ transform:translateX(18px); }
   .opt-btn{ width:100%; margin-top:8px; }
+  .btn-col{ display:flex; flex-direction:column; }
   .symcard{ border:1px solid var(--line); border-radius:12px; padding:10px 12px; margin:10px 0; }
   .symcard img{ width:56px; height:56px; object-fit:contain; background:#fff; border-radius:8px; border:1px solid var(--line); display:block; margin-bottom:6px; }
 
@@ -123,15 +130,18 @@
     <button class="filter-btn" data-filter="text">Text</button>
     <button class="filter-btn" data-filter="symbols">Symbols</button>
     <button class="filter-btn" data-filter="animate">Animate</button>
+    <button class="filter-btn" data-filter="lock" id="lockFilter">Lock &amp; tweak</button>
   </div>
 
   <div class="stage">
     <div class="seg" id="backdropSeg">
       <button data-b="light" class="on">Light</button><button data-b="dark">Dark</button><button data-b="checker">Transparent</button>
     </div>
-    <div class="canvas-wrap"><div id="patch"></div></div>
+    <div class="canvas-wrap"><div id="patch"></div><div id="dragTag"></div></div>
+    <div class="drag-hint">Drag the B, N, A, oval or star to move them · scroll to resize · Shift-drag the oval to rotate</div>
     <div class="controls">
       <button class="btn btn-primary" id="generateBtn">Generate</button>
+      <button class="btn btn-secondary" id="lockBtn">Lock design</button>
       <button class="btn btn-secondary" id="pngBtn">Download PNG</button>
       <button class="btn btn-secondary" id="svgBtn">Download SVG</button>
     </div>
@@ -229,7 +239,7 @@ const OV0 = {x:506, y:531};
 const DEF_LAYOUT = {
   bScale:0.9, bX:33, bY:25, shadow:true, shDx:-16, shDy:14,
   ovalTilt:-42, ovalA:305, ovalB:60, ovalX:0, ovalY:0,
-  starScale:1, nX:0, nY:0, nScale:1, aX:0,
+  starScale:1, starX:0, starY:0, nX:0, nY:0, nScale:1, aX:0, aY:0,
   showN:true, showA:true, showOval:true, showStar:true, embroidery:false,
 };
 
@@ -325,7 +335,7 @@ function isOccupied(x, y, pad){
     else if(x>617*m[0]+m[4]-pad && x<843*m[0]+m[4]+pad && y>376*m[3]+m[5]-pad && y<680*m[3]+m[5]+pad) return true;
   }
   if(L.showA){
-    const mm = [m[0],0,0,m[3], m[4]+L.aX*m[0], m[5]];
+    const mm = [m[0],0,0,m[3], m[4]+L.aX*m[0], m[5]+L.aY*m[3]];
     if(sketchN){ oc.setTransform(...mm); oc.lineWidth=(STROKE_NA+2*pad)/mm[0]; oc.lineJoin='round'; if(oc.isPointInStroke(Apath,x,y)) return true; }
     else if(x>870*mm[0]+mm[4]-pad && y>376*mm[3]+mm[5]-pad && y<680*mm[3]+mm[5]+pad) return true;
   }
@@ -338,7 +348,7 @@ function isOccupied(x, y, pad){
     oc.lineWidth = 16+2*pad; if(oc.isPointInStroke(e,x,y)) return true;
   }
   // centre star
-  if(L.showStar){ if(Math.hypot(x-(OV0.x+L.ovalX-6), y-(OV0.y+L.ovalY+6)) < 38*L.starScale+pad) return true; }
+  if(L.showStar){ if(Math.hypot(x-(OV0.x+L.ovalX-6+L.starX), y-(OV0.y+L.ovalY+6+L.starY)) < 38*L.starScale+pad) return true; }
   // symbols: bounding circle
   for(const sy of state.symbols){
     if(Math.hypot(x-sy.x, y-sy.y) < Math.max(sy.w,sy.h)*sy.scale/2 + pad) return true;
@@ -378,7 +388,9 @@ function genStars(){
   }
   return out;
 }
+let dragging = false;
 function ensureStars(){
+  if(dragging && starList.length) return;
   const sig = JSON.stringify([state.seed,state.density,state.crossPct,state.dotScale,state.layout,state.bFont,state.nFont,state.bWeight,state.nWeight,state.border,state.ringText.on,
     state.symbols.map(s=>[s.x,s.y,s.w,s.h,s.scale])]);
   if(sig !== starSig){ starSig = sig; starList = genStars(); }
@@ -449,6 +461,7 @@ function buildSvg(o={}){
   let st = '';
   const tw = t!=null && A.twinkle;
   for(const s of starList){
+    if(dragging && isOccupied(s.x,s.y,s.r+10)) continue;
     const op = tw ? (0.45 + 0.55*(0.5+0.5*Math.sin(t*2.2 + s.ph))).toFixed(2) : 1;
     const cs = roleCss('stars');
     if(s.cross){
@@ -466,14 +479,14 @@ function buildSvg(o={}){
   if(sketchN){
     if(L.showN) nasa += `<g transform="${nTf}"><path d="${N_D}" fill="none" stroke="${cN}" stroke-width="${STROKE_NA}" stroke-linecap="round" stroke-linejoin="round"/>` +
       (tex?`<path d="${N_D}" fill="none" stroke="url(#tex)" stroke-width="${STROKE_NA}" stroke-linecap="round" stroke-linejoin="round"/>`:'') + `</g>`;
-    if(L.showA) nasa += `<g clip-path="url(#pa)"><g transform="matrix(${m[0]} 0 0 ${m[3]} ${m[4]+L.aX*m[0]} ${m[5]})"><path d="${A_D}" fill="none" stroke="${cN}" stroke-width="${STROKE_NA}" stroke-linecap="round" stroke-linejoin="round"/>` +
+    if(L.showA) nasa += `<g clip-path="url(#pa)"><g transform="matrix(${m[0]} 0 0 ${m[3]} ${m[4]+L.aX*m[0]} ${m[5]+L.aY*m[3]})"><path d="${A_D}" fill="none" stroke="${cN}" stroke-width="${STROKE_NA}" stroke-linecap="round" stroke-linejoin="round"/>` +
       (tex?`<path d="${A_D}" fill="none" stroke="url(#tex)" stroke-width="${STROKE_NA}" stroke-linecap="round" stroke-linejoin="round"/>`:'') + `</g></g>`;
   } else {
     const gN = glyphBox(state.nFont,'N',wN); const fs = Math.min(304/gN.h, 226/gN.w);
     const base = `font-family='${lfN.fam.replace(/"/g,'')}' font-size="${fs.toFixed(1)}" font-weight="${wN}"`;
     const nx = 617 + gN.l*fs;
     if(L.showN) nasa += `<g transform="${nTf}"><text x="${nx.toFixed(1)}" y="680" ${base} fill="${cN}">N</text>${tex?`<text x="${nx.toFixed(1)}" y="680" ${base} fill="url(#tex)">N</text>`:''}</g>`;
-    if(L.showA) nasa += `<g clip-path="url(#pa)"><g transform="matrix(${m[0]} 0 0 ${m[3]} ${m[4]+L.aX*m[0]} ${m[5]})"><text x="870" y="680" ${base} fill="${cN}">A</text>${tex?`<text x="870" y="680" ${base} fill="url(#tex)">A</text>`:''}</g></g>`;
+    if(L.showA) nasa += `<g clip-path="url(#pa)"><g transform="matrix(${m[0]} 0 0 ${m[3]} ${m[4]+L.aX*m[0]} ${m[5]+L.aY*m[3]})"><text x="870" y="680" ${base} fill="${cN}">A</text>${tex?`<text x="870" y="680" ${base} fill="url(#tex)">A</text>`:''}</g></g>`;
   }
   g += `<g id="nasa">${nasa}</g>`;
 
@@ -516,7 +529,7 @@ function buildSvg(o={}){
   /* centre star */
   if(L.showStar){
     let sr = 38*L.starScale; if(t!=null && A.pulse) sr *= 1 + 0.12*Math.sin(t*2.4);
-    g += `<g id="star">${star4(OV0.x+L.ovalX-6, OV0.y+L.ovalY+6, sr, cS)}</g>`;
+    g += `<g id="star">${star4(OV0.x+L.ovalX-6+L.starX, OV0.y+L.ovalY+6+L.starY, sr, cS)}</g>`;
   }
   g += symSvg(true);
 
@@ -653,7 +666,7 @@ document.getElementById('svgBtn').addEventListener('click', ()=>{
   const svg = '<?xml version="1.0" encoding="UTF-8"?>\n' + buildSvg({fonts:true});
   download(new Blob([svg],{type:'image/svg+xml'}), 'mission-patch.svg');
 });
-document.getElementById('generateBtn').addEventListener('click', generate);
+document.getElementById('generateBtn').addEventListener('click', ()=>{ locked ? tweak() : generate(); });
 
 /* =========================================================
    PANELS
@@ -695,7 +708,7 @@ document.querySelectorAll('.filter-btn').forEach(btn=>{
   });
 });
 function rerenderPanel(){
-  ({color:pColor, layout:pLayout, letters:pLetters, stars:pStars, texture:pTexture, border:pBorder, text:pText, symbols:pSymbols, animate:pAnimate})[currentFilter]();
+  ({color:pColor, layout:pLayout, letters:pLetters, stars:pStars, texture:pTexture, border:pBorder, text:pText, symbols:pSymbols, animate:pAnimate, lock:pLock})[currentFilter]();
 }
 function rowBlock(label, sub){ return mk('div','role', `<div class="rname"><span>${label}</span><span style="color:var(--muted);font-size:12px">${sub||''}</span></div>`); }
 
@@ -719,12 +732,15 @@ function pLayout(){
   optionsEl.appendChild(mk('div','hint','Elements stay inside the patch edge. Generate nudges these within safe limits.'));
   const sl = (label,key,min,max,fmt,step)=> optionsEl.appendChild(sliderRow(label,min,max,L[key],fmt||(v=>v),v=>{ L[key]=v; if(key==='bScale'||key==='bX'||key==='bY') fitB(); },step));
   sl('B size','bScale',0.6,1.2,v=>Math.round(v*100)+'%',0.01);
-  sl('B left–right','bX',-40,80); sl('B up–down','bY',-40,80);
+  sl('B left–right','bX',-120,160); sl('B up–down','bY',-120,160);
   optionsEl.appendChild(checkRow('B shadow','Offset shadow behind the B.',L.shadow,v=>{L.shadow=v;invalidate();}));
-  sl('Oval tilt','ovalTilt',-70,-10,v=>v+'°'); sl('Oval length','ovalA',220,360); sl('Oval thickness','ovalB',40,90);
-  sl('Star size','starScale',0.6,1.6,v=>Math.round(v*100)+'%',0.01);
-  sl('N shift left–right','nX',-60,60); sl('N shift up–down','nY',-60,60);
-  sl('A shift left–right','aX',-60,60);
+  sl('Oval tilt','ovalTilt',-90,90,v=>v+'°'); sl('Oval length','ovalA',200,400); sl('Oval thickness','ovalB',30,110);
+  sl('Oval left–right','ovalX',-160,160); sl('Oval up–down','ovalY',-160,160);
+  sl('Star size','starScale',0.5,2,v=>Math.round(v*100)+'%',0.01);
+  sl('Star left–right','starX',-200,200); sl('Star up–down','starY',-200,200);
+  sl('N size','nScale',0.6,1.4,v=>Math.round(v*100)+'%',0.01);
+  sl('N left–right','nX',-150,150); sl('N up–down','nY',-150,150);
+  sl('A left–right','aX',-150,100); sl('A up–down','aY',-150,150);
   optionsEl.appendChild(mk('label','field-label','Show'));
   [['showN','NASA N'],['showA','Cut-off A'],['showOval','Oval'],['showStar','Centre star']].forEach(([k,n])=>
     optionsEl.appendChild(checkRow(n,'',L[k],v=>{L[k]=v;invalidate();})));
@@ -912,7 +928,187 @@ Promise.all(LETTERS.filter(l=>l.fam).map(l=>document.fonts.load(`${l.w} 40px ${l
   .catch(()=>{}).then(()=>{ fontsReady = true; invalidate(); });
 document.querySelector('[data-filter="color"]').click();
 requestAnimationFrame(loop);
-window.__patch = {state, buildSvg, generate, invalidate, get stars(){return starList;}, exportPng, fitB};
+
+/* =========================================================
+   DRAG TO MOVE  (B, N, A, oval, star)
+========================================================= */
+const patchBox = () => patchEl.getBoundingClientRect();
+function toDesign(e){ const r = patchBox(); return {x:(e.clientX-r.left)/r.width*1000, y:(e.clientY-r.top)/r.height*1000}; }
+function starPos(){ const L = state.layout; return {x:OV0.x+L.ovalX-6+L.starX, y:OV0.y+L.ovalY+6+L.starY}; }
+function hitTest(x,y){
+  const L = state.layout, sketchB = state.bFont==='sketch', sketchN = state.nFont==='sketch';
+  if(L.showStar){ const s = starPos(); if(Math.hypot(x-s.x,y-s.y) < Math.max(38*L.starScale,24)+8) return 'star'; }
+  if(L.showOval){
+    const th = L.ovalTilt*Math.PI/180, c = Math.cos(th), s = Math.sin(th);
+    oc.setTransform(c,s,-s,c, OV0.x+L.ovalX, OV0.y+L.ovalY);
+    const e = new Path2D(); e.ellipse(0,0,L.ovalA,L.ovalB,0,0,Math.PI*2);
+    oc.lineWidth = 46; if(oc.isPointInStroke(e,x,y)) return 'oval';
+  }
+  const m = nMatrix();
+  if(L.showN){
+    if(sketchN){ oc.setTransform(...m); oc.lineWidth=(STROKE_NA+10)/m[0]; if(oc.isPointInStroke(Npath,x,y)) return 'n'; }
+    else if(x>617*m[0]+m[4] && x<843*m[0]+m[4] && y>376*m[3]+m[5] && y<680*m[3]+m[5]) return 'n';
+  }
+  if(L.showA){
+    const mm = [m[0],0,0,m[3], m[4]+L.aX*m[0], m[5]+L.aY*m[3]];
+    if(Math.hypot(x-CX,y-CY) < R){
+      if(sketchN){ oc.setTransform(...mm); oc.lineWidth=(STROKE_NA+10)/mm[0]; oc.lineJoin='round'; if(oc.isPointInStroke(Apath,x,y)) return 'a'; }
+      else if(x>870*mm[0]+mm[4] && y>376*mm[3]+mm[5] && y<680*mm[3]+mm[5]) return 'a';
+    }
+  }
+  const bs = L.bScale, x0 = BX0+L.bX, y0 = BY0+L.bY;
+  if(sketchB){ oc.setTransform(bs,0,0,bs,x0,y0); if(oc.isPointInPath(Bpath,x,y,'evenodd')) return 'b'; oc.lineWidth = 10/bs; if(oc.isPointInStroke(Bpath,x,y)) return 'b'; }
+  else if(x>x0 && x<x0+BW*1.2*bs && y>y0 && y<y0+BH*bs) return 'b';
+  return null;
+}
+const TAGS = {b:'B', n:'N', a:'A', oval:'Oval', star:'Star'};
+function bInside(L){
+  const x0 = BX0+L.bX+Math.min(0,L.shDx), y1 = BY0+L.bY+BH*L.bScale+Math.max(0,L.shDy), y0 = BY0+L.bY;
+  return Math.max(Math.hypot(x0-CX,y1-CY), Math.hypot(x0-CX,y0-CY)) <= 462;
+}
+function clampLayout(L){
+  L.bX = clamp(L.bX,-120,160); L.bY = clamp(L.bY,-120,160);
+  L.nX = clamp(L.nX,-150,150); L.nY = clamp(L.nY,-150,150); L.nScale = clamp(L.nScale,0.6,1.4);
+  L.aX = clamp(L.aX,-150,100); L.aY = clamp(L.aY,-150,150);
+  L.ovalX = clamp(L.ovalX,-160,160); L.ovalY = clamp(L.ovalY,-160,160);
+  L.ovalA = clamp(L.ovalA,200,400); L.ovalB = clamp(L.ovalB,30,110); L.ovalTilt = clamp(L.ovalTilt,-90,90);
+  L.starScale = clamp(L.starScale,0.5,2); L.starX = clamp(L.starX,-200,200); L.starY = clamp(L.starY,-200,200);
+  const s = {x:OV0.x+L.ovalX-6+L.starX, y:OV0.y+L.ovalY+6+L.starY}, d = Math.hypot(s.x-CX,s.y-CY);
+  if(d > 420){ const k = 420/d; L.starX -= s.x-(CX+(s.x-CX)*k); L.starY -= s.y-(CY+(s.y-CY)*k); }
+}
+let drag = null;
+const tagEl = document.getElementById('dragTag');
+function showTag(e, name){
+  if(!name){ tagEl.classList.remove('on'); return; }
+  const wr = patchEl.parentElement.getBoundingClientRect();
+  tagEl.textContent = name; tagEl.style.left = (e.clientX-wr.left)+'px'; tagEl.style.top = (e.clientY-wr.top)+'px'; tagEl.classList.add('on');
+}
+patchEl.addEventListener('pointerdown', e=>{
+  if(e.button!==0) return;
+  const p = toDesign(e), hit = hitTest(p.x,p.y);
+  if(!hit) return;
+  const L = state.layout;
+  drag = {hit, p0:p, rotate: e.shiftKey && hit==='oval', start:Object.assign({}, L)};
+  const oc0 = {x:OV0.x+L.ovalX, y:OV0.y+L.ovalY};
+  drag.a0 = Math.atan2(p.y-oc0.y, p.x-oc0.x);
+  dragging = true; patchEl.setPointerCapture(e.pointerId); patchEl.style.cursor = 'grabbing'; e.preventDefault();
+});
+patchEl.addEventListener('pointermove', e=>{
+  const p = toDesign(e);
+  if(!drag){
+    const h = hitTest(p.x,p.y); patchEl.style.cursor = h ? 'grab' : 'default'; showTag(e, h ? TAGS[h] : null); return;
+  }
+  const L = state.layout, S = drag.start, dx = p.x-drag.p0.x, dy = p.y-drag.p0.y;
+  showTag(e, drag.rotate ? 'Rotate oval' : 'Move '+TAGS[drag.hit]);
+  switch(drag.hit){
+    case 'b': {
+      const keep = {bX:L.bX, bY:L.bY};
+      L.bX = S.bX+dx; L.bY = S.bY+dy;
+      if(!bInside(L)){ L.bY = keep.bY; if(!bInside(L)){ L.bX = keep.bX; L.bY = S.bY+dy; if(!bInside(L)){ L.bX = keep.bX; L.bY = keep.bY; } } }
+      break; }
+    case 'n': L.nX = S.nX+dx/ S.nScale; L.nY = S.nY+dy/ S.nScale; break;
+    case 'a': L.aX = S.aX+dx/ S.nScale; L.aY = S.aY+dy/ S.nScale; break;
+    case 'oval':
+      if(drag.rotate){
+        const oc0 = {x:OV0.x+L.ovalX, y:OV0.y+L.ovalY};
+        L.ovalTilt = Math.round(S.ovalTilt + (Math.atan2(p.y-oc0.y,p.x-oc0.x)-drag.a0)*180/Math.PI);
+      } else { L.ovalX = S.ovalX+dx; L.ovalY = S.ovalY+dy; }
+      break;
+    case 'star': L.starX = S.starX+dx; L.starY = S.starY+dy; break;
+  }
+  clampLayout(L); if(drag.hit==='b' && !bInside(L)) fitB();
+  invalidate();
+});
+function endDrag(e){
+  if(!drag) return;
+  drag = null; dragging = false; patchEl.style.cursor = 'default'; showTag(e,null); invalidate();
+  if(currentFilter==='layout') rerenderPanel();
+}
+patchEl.addEventListener('pointerup', endDrag);
+patchEl.addEventListener('pointercancel', endDrag);
+patchEl.addEventListener('pointerleave', e=>{ if(!drag) showTag(e,null); });
+patchEl.addEventListener('wheel', e=>{
+  const p = toDesign(e), hit = hitTest(p.x,p.y); if(!hit) return;
+  e.preventDefault();
+  const L = state.layout, k = Math.exp(-Math.sign(e.deltaY)*0.06);
+  if(hit==='b'){ L.bScale = +clamp(L.bScale*k,0.5,1.4).toFixed(3); fitB(); }
+  else if(hit==='n' || hit==='a'){ L.nScale = +clamp(L.nScale*k,0.6,1.4).toFixed(3); }
+  else if(hit==='oval'){ L.ovalA = clamp(L.ovalA*k,200,400); L.ovalB = clamp(L.ovalB*k,30,110); }
+  else if(hit==='star'){ L.starScale = +clamp(L.starScale*k,0.5,2).toFixed(3); }
+  clampLayout(L); invalidate(); clearTimeout(wheelT); wheelT = setTimeout(()=>{ if(currentFilter==='layout') rerenderPanel(); }, 250);
+}, {passive:false});
+let wheelT = 0;
+
+/* =========================================================
+   LOCK DESIGN + TWEAK
+========================================================= */
+let locked = null;
+const tw = {amount:40, letters:true, oval:true, star:true, stars:false, colours:false, type:false};
+const clone = o => JSON.parse(JSON.stringify(o));
+function snapshot(){
+  return clone({roles:state.roles, bFont:state.bFont, nFont:state.nFont, bWeight:state.bWeight, nWeight:state.nWeight, layout:state.layout,
+    texture:state.texture, border:state.border, density:state.density, crossPct:state.crossPct, dotScale:state.dotScale, ringText:state.ringText, seed:state.seed});
+}
+function restoreSnap(s){ const c = clone(s); Object.keys(c).forEach(k=>{ state[k] = c[k]; }); }
+const lockBtn = document.getElementById('lockBtn'), genBtn = document.getElementById('generateBtn');
+function syncLockUI(){
+  lockBtn.textContent = locked ? 'Unlock' : 'Lock design';
+  lockBtn.classList.toggle('locked', !!locked);
+  genBtn.textContent = locked ? 'Tweak' : 'Generate';
+  document.getElementById('lockFilter').textContent = locked ? 'Locked · tweak' : 'Lock & tweak';
+}
+function setLock(on){
+  locked = on ? snapshot() : null;
+  syncLockUI();
+  if(on) document.querySelector('.filter-btn[data-filter="lock"]').click(); else rerenderPanel();
+}
+lockBtn.addEventListener('click', ()=> setLock(!locked));
+function tweak(){
+  if(!locked) return;
+  restoreSnap(locked);
+  const L = state.layout, a = tw.amount/100;
+  const j = range => (Math.random()*2-1)*range*a;
+  if(tw.letters){
+    L.bX += j(50); L.bY += j(50); L.bScale = +clamp(L.bScale + j(0.14),0.6,1.2).toFixed(2);
+    L.nX += j(50); L.nY += j(50); L.nScale = +(L.nScale + j(0.14)).toFixed(2); L.aX += j(50); L.aY += j(50);
+  }
+  if(tw.oval){ L.ovalTilt += j(30); L.ovalA += j(60); L.ovalB += j(16); L.ovalX += j(60); L.ovalY += j(60); }
+  if(tw.star){ L.starX += j(70); L.starY += j(70); L.starScale = +(L.starScale + j(0.4)).toFixed(2); }
+  if(tw.stars){ state.seed = Math.floor(Math.random()*1e9); state.density = Math.round(clamp(state.density + j(40),40,160)); }
+  if(tw.colours){
+    const roles = ['b','n','oval','star','stars','shadow'], count = a>0.6 ? 2 : 1;
+    for(let i=0;i<count;i++){ const r = roles[Math.floor(Math.random()*roles.length)]; state.roles[r] = {key:PALETTE[Math.floor(Math.random()*PALETTE.length)].key, l:0}; }
+  }
+  if(tw.type){ const pick = ()=>LETTERS[Math.floor(Math.random()*LETTERS.length)].key; if(Math.random()<.6) { state.bFont = pick(); state.bWeight = null; } if(Math.random()<.6 || !tw.letters){ state.nFont = pick(); state.nWeight = null; } }
+  Object.keys(L).forEach(k=>{ if(typeof L[k]==='number') L[k] = +L[k].toFixed(3); });
+  clampLayout(L); fitB();
+  invalidate(); rerenderPanel();
+}
+function pLock(){
+  optionsEl.innerHTML = '<h3>Lock & tweak</h3>';
+  if(!locked){
+    optionsEl.appendChild(mk('div','hint','Found a design you like? Lock it. Generate then becomes Tweak: it makes small variations around your locked design instead of starting over, and you can always go back to it.'));
+    const b = mk('button','btn btn-primary opt-btn','Lock this design'); b.onclick = ()=>setLock(true); optionsEl.appendChild(b);
+    return;
+  }
+  optionsEl.appendChild(mk('div','hint','Design locked. Tweak varies only the parts ticked below, starting from the locked design each time.'));
+  optionsEl.appendChild(sliderRow('Tweak amount',10,100,tw.amount,v=>v<=30?'Subtle':v<=65?'Medium':'Bold',v=>{ tw.amount=v; },5));
+  optionsEl.appendChild(mk('label','field-label','Tweak these'));
+  [['letters','Letters','B, N and A position and size'],['oval','Oval','tilt, length, thickness, position'],['star','Centre star','position and size'],
+   ['stars','Star field','new dots and crosses'],['colours','Colours','swaps one or two colours'],['type','Typefaces','new fonts for B and NASA']].forEach(([k,n,note])=>
+    optionsEl.appendChild(checkRow(n,note,tw[k],v=>{ tw[k]=v; })));
+  const row = mk('div','btn-col');
+  const mkb = (label, cls, fn)=>{ const b = mk('button','btn '+cls+' opt-btn',label); b.onclick = fn; row.appendChild(b); };
+  mkb('Tweak','btn-primary', tweak);
+  mkb('Update lock to this version','btn-secondary', ()=>{ locked = snapshot(); rerenderPanel(); });
+  mkb('Back to locked design','btn-secondary', ()=>{ restoreSnap(locked); invalidate(); rerenderPanel(); });
+  mkb('Unlock','btn-secondary', ()=>setLock(false));
+  optionsEl.appendChild(row);
+}
+
+document.addEventListener('keydown', e=>{ if(e.key==='Escape' && window.parent!==window){ try{ window.parent.postMessage('mission-patch-generator:close','*'); }catch(err){} } });
+
+window.__patch = {state, hitTest, tweak, setLock, get locked(){return locked;}, buildSvg, generate, invalidate, get stars(){return starList;}, exportPng, fitB};
 })();
 </script>
 </body>
